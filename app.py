@@ -4,8 +4,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import butter, filtfilt, iirnotch, welch
 
-# --- CONFIGURACIÓN Y FUNCIONES ---
-st.set_page_config(page_title="Dashboard EMG Completo", layout="wide")
+# --- CONFIGURATION AND FUNCTIONS ---
+st.set_page_config(page_title="Advanced EMG Fatigue Dashboard", layout="wide")
 
 def bandpass_filter(x, fs):
     nyq = 0.5 * fs
@@ -14,7 +14,7 @@ def bandpass_filter(x, fs):
 
 def notch_filter(x, fs):
     nyq = 0.5 * fs
-    w0 = 60/nyq # Asumiendo 60Hz, ajusta si en tu país es 50Hz
+    w0 = 60/nyq # Assuming 60Hz, adjust if your region uses 50Hz
     b, a = iirnotch(w0, 30)
     return filtfilt(b, a, x)
 
@@ -29,10 +29,10 @@ def get_metrics(segment, fs):
     rms = np.sqrt(np.mean(segment**2))
     return mnf, mdf, rms, freqs, power
 
-# --- INTERFAZ ---
+# --- INTERFACE ---
 st.title("⚡ Advanced EMG Fatigue Dashboard")
 
-archivo = st.file_uploaderUpload your processed CSV file", type=["csv"])
+archivo = st.file_uploader("Upload your processed CSV file", type=["csv"])
 
 if archivo is not None:
     df = pd.read_csv(archivo)
@@ -42,29 +42,29 @@ if archivo is not None:
     sig_raw = df[columna].values
     sig_f = notch_filter(bandpass_filter(sig_raw, fs), fs)
     
-    # Pestañas de Visualización
+    # Visualization Tabs
     tab1, tab2, tab3, tab4 = st.tabs(["Signal (Raw vs Clean)", "SpectrUM (PSD)", "Temporal evolution", "Fatigue Metrics"])
     
-    # Tab 1: Comparativa
+    # Tab 1: Comparison
     with tab1:
         st.subheader("Signal Comparison")
         fig1, ax1 = plt.subplots(figsize=(10, 3))
         ax1.plot(sig_raw[:1000], label="Raw", alpha=0.5)
-        ax1.plot(sig_f[:1000], label="Filtrada", color='green')
+        ax1.plot(sig_f[:1000], label="Filtered", color='green')
         ax1.legend()
         st.pyplot(fig1)
         
-    # Tab 2: Espectro
+    # Tab 2: Spectrum
     with tab2:
         st.subheader("Power Spectral Density (PSD)")
         f, p = welch(sig_f, fs=fs)
         fig2, ax2 = plt.subplots(figsize=(10, 3))
         ax2.semilogy(f, p)
-        ax2.set_xlabel("Frecuencia (Hz)")
+        ax2.set_xlabel("Frequency (Hz)")
         ax2.set_ylabel("PSD")
         st.pyplot(fig2)
         
-    # Tab 3 y 4: Cálculo de fatiga
+    # Tab 3 & 4: Fatigue Calculation
     win_sec = 0.5
     w_len = int(win_sec * fs)
     segs = [sig_f[i:i+w_len] for i in range(0, len(sig_f)-w_len, w_len)]
@@ -85,11 +85,11 @@ if archivo is not None:
     with tab4:
         st.subheader("Fatigue State")
         drop = ((mnf_v[-1] - mnf_v[0]) / mnf_v[0]) * 100
-        st.metric("Caída MNF (%)", f"{drop:.2f}%")
+        st.metric("MNF Drop (%)", f"{drop:.2f}%")
         if drop < -15:
-            st.error("Nivel: FATIGA DETECTADA")
+            st.error("Level: FATIGUE DETECTED")
         else:
-            st.success("Nivel: MUSCULO FRESCO")
+            st.success("Level: FRESH MUSCLE")
 
 else:
     st.info("Please upload a CSV file to get started.")
