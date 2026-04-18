@@ -30,24 +30,24 @@ def get_metrics(segment, fs):
     return mnf, mdf, rms, freqs, power
 
 # --- INTERFAZ ---
-st.title("⚡ Dashboard Avanzado de Fatiga EMG")
+st.title("⚡ Advanced EMG Fatigue Dashboard")
 
-archivo = st.file_uploader("Sube tu archivo CSV procesado", type=["csv"])
+archivo = st.file_uploaderUpload your processed CSV file", type=["csv"])
 
 if archivo is not None:
     df = pd.read_csv(archivo)
-    columna = st.selectbox("Selecciona la señal", df.columns)
-    fs = st.number_input("Frecuencia de muestreo (Hz)", value=1000)
+    columna = st.selectbox("Select the signal", df.columns)
+    fs = st.number_input("Sampling Rate (Hz)", value=1000)
     
     sig_raw = df[columna].values
     sig_f = notch_filter(bandpass_filter(sig_raw, fs), fs)
     
     # Pestañas de Visualización
-    tab1, tab2, tab3, tab4 = st.tabs(["Señal (Raw vs Clean)", "Espectro (PSD)", "Evolución Temporal", "Métricas de Fatiga"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Signal (Raw vs Clean)", "SpectrUM (PSD)", "Temporal evolution", "Fatigue Metrics"])
     
     # Tab 1: Comparativa
     with tab1:
-        st.subheader("Comparativa de Señal")
+        st.subheader("Signal Comparison")
         fig1, ax1 = plt.subplots(figsize=(10, 3))
         ax1.plot(sig_raw[:1000], label="Raw", alpha=0.5)
         ax1.plot(sig_f[:1000], label="Filtrada", color='green')
@@ -56,7 +56,7 @@ if archivo is not None:
         
     # Tab 2: Espectro
     with tab2:
-        st.subheader("Densidad Espectral de Potencia (PSD)")
+        st.subheader("Power Spectral Density (PSD)")
         f, p = welch(sig_f, fs=fs)
         fig2, ax2 = plt.subplots(figsize=(10, 3))
         ax2.semilogy(f, p)
@@ -73,7 +73,7 @@ if archivo is not None:
     t_segs = np.arange(len(segs)) * win_sec
 
     with tab3:
-        st.subheader("Evolución de Frecuencia y Amplitud")
+        st.subheader("Frequency and Amplitude Evolution")
         fig3, ax3 = plt.subplots(2, 1, figsize=(10, 6))
         ax3[0].plot(t_segs, mnf_v, color='blue', label="MNF")
         ax3[0].plot(t_segs, mdf_v, color='red', label="MDF")
@@ -83,7 +83,7 @@ if archivo is not None:
         st.pyplot(fig3)
 
     with tab4:
-        st.subheader("Estado de Fatiga")
+        st.subheader("Fatigue State")
         drop = ((mnf_v[-1] - mnf_v[0]) / mnf_v[0]) * 100
         st.metric("Caída MNF (%)", f"{drop:.2f}%")
         if drop < -15:
@@ -92,4 +92,4 @@ if archivo is not None:
             st.success("Nivel: MUSCULO FRESCO")
 
 else:
-    st.info("Por favor, sube un archivo CSV para empezar.")
+    st.info("Please upload a CSV file to get started.")
