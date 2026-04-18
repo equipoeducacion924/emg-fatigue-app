@@ -2,10 +2,11 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.signal import butter, filtfilt, iirnotch
-from scipy.fft import fft, fftfreq
+from scipy.signal import butter, filtfilt, iirnotch, welch
 
-# --- CONFIGURACIÓN Y FUNCIONES DE PROCESAMIENTO (Tu lógica de Colab) ---
+# --- CONFIGURACIÓN Y FUNCIONES ---
+st.set_page_config(page_title="Dashboard EMG Completo", layout="wide")
+
 def bandpass_filter(x, fs):
     nyq = 0.5 * fs
     b, a = butter(4, [20/nyq, 450/nyq], btype='band')
@@ -13,88 +14,82 @@ def bandpass_filter(x, fs):
 
 def notch_filter(x, fs):
     nyq = 0.5 * fs
-    w0 = 60/nyq
+    w0 = 60/nyq # Asumiendo 60Hz, ajusta si en tu país es 50Hz
     b, a = iirnotch(w0, 30)
     return filtfilt(b, a, x)
 
 def get_metrics(segment, fs):
-    N = len(segment)
-    yf = np.abs(fft(segment))[:N//2]
-    xf = fftfreq(N, 1/fs)[:N//2]
-    power = yf**2
-    mnf = np.sum(xf * power) / np.sum(power) if np.sum(power) > 0 else 0
+    f, p = welch(segment, fs=fs, nperseg=len(segment))
+    power = p
+    freqs = f
+    mnf = np.sum(freqs * power) / np.sum(power) if np.sum(power) > 0 else 0
     cum_power = np.cumsum(power)
     total_p = cum_power[-1] if len(cum_power) > 0 else 0
-    mdf = xf[np.where(cum_power >= total_p/2)[0][0]] if total_p > 0 else 0
+    mdf = freqs[np.where(cum_power >= total_p/2)[0][0]] if total_p > 0 else 0
     rms = np.sqrt(np.mean(segment**2))
-    return mnf, mdf, rms
+    return mnf, mdf, rms, freqs, power
 
-# --- INTERFAZ DE STREAMLIT ---
-st.set_page_config(page_title="EMG Fatigue Analyzer", layout="wide")
-st.title("⚡ Analizador de Fatiga Muscular (EMG)")
+# --- INTERFAZ ---
+st.title("⚡ Dashboard Avanzado de Fatiga EMG")
 
-archivo = st.file_uploader("Sube tu señal EMG (CSV)", type=["csv"])
+archivo = st.file_uploader("Sube tu archivo CSV procesado", type=["csv"])
 
 if archivo is not None:
     df = pd.read_csv(archivo)
-    columna = st.selectbox("Selecciona la columna de la señal EMG", df.columns)
+    columna = st.selectbox("Selecciona la señal", df.columns)
     fs = st.number_input("Frecuencia de muestreo (Hz)", value=1000)
     
-    # Procesamiento
     sig_raw = df[columna].values
     sig_f = notch_filter(bandpass_filter(sig_raw, fs), fs)
     
-    # Segmentación (0.5s)
-    win_sec = 0.5
-    w_len = int(win_sec * fs)
-    segs = [sig_f[i:i+w_len] for i in range(0, len(sig_f)-w_len, w_len)]
-    t_segs = np.arange(len(segs)) * win_sec
+    # Pestañas de Visualización
+    tab1, tab2, tab3, tab4 = st.tabs(["Señal (Raw vs Clean)", "Espectro (PSD)", "Evolución Temporal", "Métricas de Fatiga"])
     
-    # Calcular métricas
-    metrics = [get_metrics(seg, fs) for seg in segs]
-    mnf_v, mdf_v, rms_v = zip(*metrics)
-    
-    # Baselines (Primeros 10s según tu Colab)
-    n_base = max(1, int(10 / win_sec))
-    base_mnf = np.mean(mnf_v[:n_base])
-    
-    # Cálculo de nivel de fatiga actual
-    current_mnf_drop = ((mnf_v[-1] - base_mnf) / base_mnf) * 100
-    
-    # Clasificación de nivel
-    def clasificar(diff):
-        if diff < -25: return "Severe Fatigue", "🔴"
-        elif diff < -15: return "Moderate Fatigue", "🟠"
-        elif diff < -5: return "Mild Fatigue", "🟡"
-        return "No Fatigue", "🟢"
-
-    nivel, emoji = clasificar(current_mnf_drop)
-
-    # --- DASHBOARD ---
-    st.header(f"Estado Actual: {emoji} {nivel}")
-    
-    c1, c2, c3 = st.columns(3)
-    c1.metric("MNF Drop", f"{current_mnf_drop:.2f}%")
-    c2.metric("MDF Actual", f"{mdf_v[-1]:.2f} Hz")
-    c3.metric("RMS Actual", f"{rms_v[-1]:.4f}")
-
-    # Gráficas
-    st.subheader("Evolución de Parámetros")
-    tab1, tab2 = st.tabs(["Frecuencias (MNF/MDF)", "Amplitud (RMS)"])
-    
+    # Tab 1: Comparativa
     with tab1:
-        fig1, ax1 = plt.subplots(figsize=(10, 4))
-        ax1.plot(t_segs, mnf_v, label="MNF")
-        ax1.plot(t_segs, mdf_v, label="MDF")
-        ax1.set_ylabel("Frecuencia (Hz)")
+        st.subheader("Comparativa de Señal")
+        fig1, ax1 = plt.subplots(figsize=(10, 3))
+        ax1.plot(sig_raw[:1000], label="Raw", alpha=0.5)
+        ax1.plot(sig_f[:1000], label="Filtrada", color='green')
         ax1.legend()
         st.pyplot(fig1)
         
+    # Tab 2: Espectro
     with tab2:
-        fig2, ax2 = plt.subplots(figsize=(10, 4))
-        ax2.plot(t_segs, rms_v, color="orange")
-        ax2.set_ylabel("RMS (Amplitud)")
+        st.subheader("Densidad Espectral de Potencia (PSD)")
+        f, p = welch(sig_f, fs=fs)
+        fig2, ax2 = plt.subplots(figsize=(10, 3))
+        ax2.semilogy(f, p)
+        ax2.set_xlabel("Frecuencia (Hz)")
+        ax2.set_ylabel("PSD")
         st.pyplot(fig2)
+        
+    # Tab 3 y 4: Cálculo de fatiga
+    win_sec = 0.5
+    w_len = int(win_sec * fs)
+    segs = [sig_f[i:i+w_len] for i in range(0, len(sig_f)-w_len, w_len)]
+    metrics = [get_metrics(seg, fs) for seg in segs]
+    mnf_v, mdf_v, rms_v, _, _ = zip(*metrics)
+    t_segs = np.arange(len(segs)) * win_sec
+
+    with tab3:
+        st.subheader("Evolución de Frecuencia y Amplitud")
+        fig3, ax3 = plt.subplots(2, 1, figsize=(10, 6))
+        ax3[0].plot(t_segs, mnf_v, color='blue', label="MNF")
+        ax3[0].plot(t_segs, mdf_v, color='red', label="MDF")
+        ax3[0].legend()
+        ax3[1].plot(t_segs, rms_v, color='orange', label="RMS")
+        ax3[1].legend()
+        st.pyplot(fig3)
+
+    with tab4:
+        st.subheader("Estado de Fatiga")
+        drop = ((mnf_v[-1] - mnf_v[0]) / mnf_v[0]) * 100
+        st.metric("Caída MNF (%)", f"{drop:.2f}%")
+        if drop < -15:
+            st.error("Nivel: FATIGA DETECTADA")
+        else:
+            st.success("Nivel: MUSCULO FRESCO")
 
 else:
-    st.info("Sube un archivo para procesar la fatiga en tiempo real.")
+    st.info("Por favor, sube un archivo CSV para empezar.")
